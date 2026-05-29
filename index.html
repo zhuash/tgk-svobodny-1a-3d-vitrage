@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9 витражей 1эт · 9 окон 2эт · 7 слуховых окон · vB</div>
+  <div class="dim">9 витражей 1эт 2.80×2.60м · 9 окон 2эт 1.60×2.10м · 7 слуховых · vB2</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -454,37 +454,34 @@ const WIN_H = 2.10;                    // 2F window height
 const WIN_2F_B = Y_F2 + SILL;         // 3.60 — 2F sill above floor
 const WIN_2F_T = WIN_2F_B + WIN_H;    // 5.70
 
-// Storefront vitrage dimensions (1F)
-const VIT_W  = 2.20;                   // wide glazing panel (vs WIN_W=1.60)
-const VIT_B  = PLINTH;                 // 0.55 — starts at plinth top
-const VIT_T  = Y_F2 - 0.25;           // 2.75 — just below belt cornice (starts 2.70)
-const VIT_H  = VIT_T - VIT_B;         // 2.20 m tall
+// Storefront vitrage dimensions (1F) — full-floor-height shopfront glazing
+const VIT_W  = 2.80;                   // wide shopfront bay (bay step ≈3.44; clear gap 3.08)
+const VIT_B  = 0.10;                   // near-ground sill — threshold height only
+const VIT_T  = Y_F2 - 0.30;           // 2.70 — flush with underside of belt cornice
+const VIT_H  = VIT_T - VIT_B;         // 2.60 m tall (vs 2F window 2.10 m)
 
 function vitrage1F(f, uPos) {
-  const fr = 0.06, proj = 0.06;        // thin storefront frame
+  const fr = 0.05, proj = 0.07;        // slim storefront frame, slight projection
   const yC = (VIT_B + VIT_T) / 2;
-  // Main glass pane
+  // Main glass pane — full floor height
   onFacade(f, uPos, yC, VIT_W, VIT_H, 0.0, 0.04, matGlass);
-  // Top transom
+  // Top transom (at belt cornice underside)
   onFacade(f, uPos, VIT_T + fr / 2, VIT_W + 2 * fr, fr, 0.0, proj, matStoneShade);
-  // Bottom sill
+  // Bottom threshold sill
   onFacade(f, uPos, VIT_B - fr / 2, VIT_W + 2 * fr, fr, 0.0, proj, matStoneShade);
   // Left mullion
   onFacade(f, uPos - VIT_W / 2 - fr / 2, yC, fr, VIT_H, 0.0, proj, matStone);
   // Right mullion
   onFacade(f, uPos + VIT_W / 2 + fr / 2, yC, fr, VIT_H, 0.0, proj, matStone);
-  // Horizontal mid-rail at ≈1.10 m for visual rhythm (divides storefront)
-  onFacade(f, uPos, PLINTH + 1.10, VIT_W, 0.08, 0.0, proj + 0.01, matStoneShade);
+  // Horizontal mid-rail at 1.10 m abs height (door-handle level)
+  onFacade(f, uPos, 1.10, VIT_W, 0.08, 0.0, proj + 0.01, matStoneShade);
 }
 
 for (const key of ['PX', 'NX', 'PZ', 'NZ']) {
   const f = FACADES[key];
   const { centers, step } = baysFor(f);
 
-  // Rusticated base band — raised plinth course on lower 1F wall
-  onFacade(f, 0, PLINTH + 0.38, f.span, 0.76, 0.0, 0.07, matStoneShade);
-
-  // 1F storefront vitrage
+  // 1F storefront vitrage — no rusticated band (shopfront glazing spans full 1F height)
   for (const c of centers) vitrage1F(f, c);
 
   // Classical pilasters / lesenes — between bays, running full height 1F+2F
