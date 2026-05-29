@@ -630,8 +630,8 @@ function buildDormer(sign, zc) {
   box(ridgeLen, 0.10, 0.10, matRoof, ridgeMidX, dPeakY + 0.04, zc);
 }
 
-// 7 dormers per long slope: centered, step 4 m, outermost at ±12 m (2 m inside ridge end ±14)
-const dormerCentersZ = [-12, -8, -4, 0, 4, 8, 12];
+// 7 dormers per long slope: coaxial with 2F windows #2–#8 (skip first and last of 9)
+const dormerCentersZ = bayLong.centers.slice(1, -1);
 for (const zc of dormerCentersZ) {
   buildDormer(+1, zc);
   buildDormer(-1, zc);
