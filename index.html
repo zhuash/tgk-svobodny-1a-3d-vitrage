@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ТГК «Свободный 1а» — 3D с окружением (v2)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1a2030; overflow: hidden; }
+  #app { width: 100vw; height: 100vh; display: block; }
+  #vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    background: radial-gradient(ellipse at 50% 48%,
+      transparent 52%, rgba(8,6,4,0.50) 100%);
+  }
+  #hud {
+    position: fixed; left: 12px; top: 12px; z-index: 10;
+    font: 12px/1.45 system-ui, sans-serif; color: #2a2f33;
+    background: rgba(255,255,255,.78); padding: 8px 11px; border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.12); pointer-events: none; max-width: 280px;
+  }
+  #hud b { color: #11161a; }
+  #hud .dim { color: #5a6168; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./libs/three.module.min.js",
+    "three/addons/": "./libs/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="vignette"></div>
+<div id="hud">
+  <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
+  <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
+  <div class="dim">9 витражей 1эт · 9 окон 2эт · 7 слуховых окон · vB</div>
+  <div class="dim">мышь: вращать · колесо: зум</div>
+</div>
+<canvas id="app"></canvas>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls }    from 'three/addons/controls/OrbitControls.js';
+import { RGBELoader }       from 'three/addons/loaders/RGBELoader.js';
+import { EffectComposer }   from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }       from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass }       from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass }       from 'three/addons/postprocessing/OutputPass.js';
+import { UnrealBloomPass }  from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { FXAAShader }       from 'three/addons/shaders/FXAAShader.js';
+
+// ─────────────────────────────────────────────────────────────────────────
+// HARD DIMENSIONS (meters) — DO NOT CHANGE
+// ─────────────────────────────────────────────────────────────────────────
+const W = 18, L = 34;
+const H_F1 = 3.0, H_F2 = 3.0;
+const H_TOTAL = 11.0;                   // 1эт 3.0 + 2эт 3.0 + мансарда в скатах
+const Y_F1 = 0, Y_F2 = H_F1, Y_MAN = H_F1 + H_F2, Y_RIDGE = H_TOTAL;
+const PLINTH = 0.55;
+const WALL_FACE_X = W / 2, WALL_FACE_Z = L / 2;
+const SILL = 0.60;
+const RIDGE_HALF_Z = 14.0;              // steeper hip ends: plan depth 3 m vs 9 m prior
+const Y_EAVE = 7.4;                     // raised eave (was Y_MAN=6.0); knee wall 1.4 m
+
+// ═════════════════════════════════════════════════════════════════════════
+// PROCEDURAL TEXTURES
+// ═════════════════════════════════════════════════════════════════════════
+const PX_PER_M = 256;
+
+function vnoise(seed) {
+  let s = seed >>> 0;
+  return (x, y) => {
+    const n = Math.sin((x * 12.9898 + y * 78.233 + s * 0.137)) * 43758.5453;
+    return n - Math.floor(n);
+  };
+}
+function fbm(rng, x, y, octaves = 4) {
+  let v = 0, a = 0.5, f = 1;
+  for (let i = 0; i < octaves; i++) {
+    const xi = Math.floor(x * f), yi = Math.floor(y * f);
+    const xf = x * f - xi, yf = y * f - yi;
+    const u = xf * xf * (3 - 2 * xf), w = yf * yf * (3 - 2 * yf);
+    const a00 = rng(xi, yi), a10 = rng(xi + 1, yi), a01 = rng(xi, yi + 1), a11 = rng(xi + 1, yi + 1);
+    v += a * (a00 * (1 - u) * (1 - w) + a10 * u * (1 - w) + a01 * (1 - u) * w + a11 * u * w);
+    a *= 0.5; f *= 2;
+  }
+  return v;
+}
+function heightToNormal(heights, W_, H_, strength = 1.0) {
+  const out = new Uint8ClampedArray(W_ * H_ * 4);
+  for (let y = 0; y < H_; y++) {
+    for (let x = 0; x < W_; x++) {
+      const xl = (x - 1 + W_) % W_, xr = (x + 1) % W_;
+      const yu = (y - 1 + H_) % H_, yd = (y + 1) % H_;
+      const dx = (heights[y * W_ + xr] - heights[y * W_ + xl]) * strength;
+      const dy = (heights[yd * W_ + x] - heights[yu * W_ + x]) * strength;
+      const nx = -dx, ny = -dy, nz = 1;
+      const m = 1 / Math.hypot(nx, ny, nz);
+      const i = (y * W_ + x) * 4;
+      out[i]   = (nx * m * 0.5 + 0.5) * 255;
+      out[i+1] = (ny * m * 0.5 + 0.5) * 255;
+      out[i+2] = (nz * m * 0.5 + 0.5) * 255;
+      out[i+3] = 255;
+    }
+  }
+  return out;
+}
+function makeTex(imageData, sRGB) {
+  const c = document.createElement('canvas');
+  c.width = imageData.width; c.height = imageData.height;
+  c.getContext('2d').putImageData(imageData, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  if (sRGB) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// — cream travertine ——————————————————————————————————————————————————————
+function buildStoneTextures() {
+  const W_ = 512, H_ = 512;
+  const heights = new Float32Array(W_ * H_);
+  const albedo = new Uint8ClampedArray(W_ * H_ * 4);
+  const rough  = new Uint8ClampedArray(W_ * H_ * 4);
+  const rng1 = vnoise(7), rng2 = vnoise(17);
+  const jointRows = [0, H_ / 2];
+  function isJoint(x, y) {
+    let h = 0;
+    for (const r of jointRows) {
+      const dy = Math.min(Math.abs(y - r), Math.abs(y - r - H_), Math.abs(y - r + H_));
+      if (dy < 1.5) h = Math.max(h, 1 - dy / 1.5);
+    }
+    const row = y < H_ / 2 ? 0 : 1;
+    const xMid = ((row * (W_ / 2)) % W_);
+    for (const xs of [xMid, xMid + W_ / 2 < W_ ? xMid + W_ / 2 : xMid - W_ / 2]) {
+      const dx = Math.min(Math.abs(x - xs), Math.abs(x - xs - W_), Math.abs(x - xs + W_));
+      if (dx < 1.0) h = Math.max(h, 1 - dx / 1.0);
+    }
+    return h;
+  }
+  for (let y = 0; y < H_; y++) {
+    for (let x = 0; x < W_; x++) {
+      const nx = x / W_, ny = y / H_;
+      const v = fbm(rng1, nx * 4, ny * 4, 4);
+      const fine = fbm(rng2, nx * 32, ny * 32, 3);
+      const j = isJoint(x, y);
+      const grime = j * 0.30;
+      const baseR = 0.93, baseG = 0.87, baseB = 0.78;
+      const tone = 0.92 + 0.06 * v + 0.025 * (fine - 0.5);
+      let r = baseR * tone, g = baseG * tone, b = baseB * tone;
+      r *= (1 - grime); g *= (1 - grime * 1.05); b *= (1 - grime * 1.15);
+      const i = (y * W_ + x) * 4;
+      albedo[i]   = Math.min(255, r * 255);
+      albedo[i+1] = Math.min(255, g * 255);
+      albedo[i+2] = Math.min(255, b * 255);
+      albedo[i+3] = 255;
+      heights[y * W_ + x] = -j * 1.6 + (fine - 0.5) * 0.15;
+      const ru = (0.78 + 0.10 * (1 - v) + j * 0.10);
+      rough[i]   = ru * 255;
+      rough[i+1] = ru * 255;
+      rough[i+2] = ru * 255;
+      rough[i+3] = 255;
+    }
+  }
+  const normalArr = heightToNormal(heights, W_, H_, 32);
+  const mkImg = (arr) => new ImageData(arr, W_, H_);
+  return {
+    map:       makeTex(mkImg(albedo), true),
+    normalMap: makeTex(mkImg(normalArr), false),
+    roughnessMap: makeTex(mkImg(rough), false),
+    sizeM: 2.0,
+  };
+}
+
+// — standing-seam zinc ————————————————————————————————————————————————————
+function buildSeamTextures() {
+  const W_ = 256, H_ = 256;
+  const albedo = new Uint8ClampedArray(W_ * H_ * 4);
+  const heights = new Float32Array(W_ * H_);
+  const rough  = new Uint8ClampedArray(W_ * H_ * 4);
+  const rng = vnoise(31);
+  for (let y = 0; y < H_; y++) {
+    for (let x = 0; x < W_; x++) {
+      const nx = x / W_, ny = y / H_;
+      const grain = fbm(rng, nx * 60, ny * 60, 3);
+      let r = 0.27 + 0.04 * grain, g = 0.30 + 0.04 * grain, b = 0.34 + 0.04 * grain;
+      const dx = Math.min(x, W_ - x);
+      let h = 0;
+      if (dx < 4) {
+        h = (1 - dx / 4);
+        const highlight = (dx === 0) ? 0.20 : (dx < 2 ? 0.10 : 0);
+        const shadow = (dx > 1 && dx < 4) ? 0.10 * (1 - (dx - 1) / 3) : 0;
+        r = r + highlight - shadow * 0;
+        g = g + highlight - shadow;
+        b = b + highlight - shadow;
+      }
+      const i = (y * W_ + x) * 4;
+      albedo[i]   = Math.min(255, Math.max(0, r * 255));
+      albedo[i+1] = Math.min(255, Math.max(0, g * 255));
+      albedo[i+2] = Math.min(255, Math.max(0, b * 255));
+      albedo[i+3] = 255;
+      heights[y * W_ + x] = h * 6 + (grain - 0.5) * 0.1;
+      const ru = 0.40 + (grain * 0.06) + h * 0.05;
+      rough[i] = rough[i+1] = rough[i+2] = ru * 255;
+      rough[i+3] = 255;
+    }
+  }
+  const normalArr = heightToNormal(heights, W_, H_, 48);
+  const mkImg = (arr) => new ImageData(arr, W_, H_);
+  return {
+    map: makeTex(mkImg(albedo), true),
+    normalMap: makeTex(mkImg(normalArr), false),
+    roughnessMap: makeTex(mkImg(rough), false),
+  };
+}
+
+// — asphalt (dark, fine aggregate) ———————————————————————————————————————
+function buildAsphaltTextures() {
+  const W_ = 256, H_ = 256;
+  const albedo = new Uint8ClampedArray(W_ * H_ * 4);
+  const heights = new Float32Array(W_ * H_);
+  const rough  = new Uint8ClampedArray(W_ * H_ * 4);
+  const rng1 = vnoise(53), rng2 = vnoise(97);
+  for (let y = 0; y < H_; y++) {
+    for (let x = 0; x < W_; x++) {
+      const nx = x / W_, ny = y / H_;
+      const grain = fbm(rng1, nx * 80, ny * 80, 3);
+      const lump  = fbm(rng2, nx * 20, ny * 20, 2);
+      // dark charcoal with light aggregate speckle
+      const base = 0.08 + 0.06 * grain + 0.04 * lump;
+      const agg  = grain > 0.75 ? 0.15 : 0;   // light pebbles
+      const v = base + agg;
+      const i = (y * W_ + x) * 4;
+      albedo[i]   = Math.min(255, v * 255);
+      albedo[i+1] = Math.min(255, v * 255 * 0.98);
+      albedo[i+2] = Math.min(255, v * 255 * 0.95);
+      albedo[i+3] = 255;
+      heights[y * W_ + x] = (grain - 0.5) * 0.2 + lump * 0.1;
+      const ru = 0.88 + 0.05 * (1 - grain);
+      rough[i] = rough[i+1] = rough[i+2] = ru * 255;
+      rough[i+3] = 255;
+    }
+  }
+  const normalArr = heightToNormal(heights, W_, H_, 8);
+  const mkImg = (arr) => new ImageData(arr, W_, H_);
+  return {
+    map:       makeTex(mkImg(albedo), true),
+    normalMap: makeTex(mkImg(normalArr), false),
+    roughnessMap: makeTex(mkImg(rough), false),
+  };
+}
+
+// — water ripple (blue-green) ——————————————————————————————————————————
+function buildWaterTextures() {
+  const W_ = 256, H_ = 256;
+  const albedo = new Uint8ClampedArray(W_ * H_ * 4);
+  const heights = new Float32Array(W_ * H_);
+  const rng = vnoise(113);
+  for (let y = 0; y < H_; y++) {
+    for (let x = 0; x < W_; x++) {
+      const nx = x / W_, ny = y / H_;
+      const ripple = fbm(rng, nx * 12, ny * 12, 4);
+      const fine   = fbm(rng, nx * 60, ny * 60, 2);
+      const t = 0.85 + 0.12 * ripple;
+      const i = (y * W_ + x) * 4;
+      albedo[i]   = Math.min(255, (0.14 + 0.06 * ripple) * 255);
+      albedo[i+1] = Math.min(255, (0.38 + 0.08 * ripple) * 255);
+      albedo[i+2] = Math.min(255, (0.52 + 0.10 * ripple) * 255);
+      albedo[i+3] = 255;
+      heights[y * W_ + x] = (ripple - 0.5) * 1.0 + (fine - 0.5) * 0.3;
+    }
+  }
+  const normalArr = heightToNormal(heights, W_, H_, 20);
+  const mkImg = (arr) => new ImageData(arr, W_, H_);
+  return {
+    map:       makeTex(mkImg(albedo), true),
+    normalMap: makeTex(mkImg(normalArr), false),
+  };
+}
+
+const stoneTex  = buildStoneTextures();
+const seamTex   = buildSeamTextures();
+const asphTex   = buildAsphaltTextures();
+const waterTex  = buildWaterTextures();
+
+// ═════════════════════════════════════════════════════════════════════════
+// TRIPLANAR INJECTION
+// ═════════════════════════════════════════════════════════════════════════
+function injectTriplanar(material, scalePerMeter) {
+  material.userData.triScale = { value: scalePerMeter };
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.triScale = material.userData.triScale;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vWPos;
+varying vec3 vWNrm;`)
+      .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+vWPos = worldPosition.xyz;
+vWNrm = normalize(mat3(modelMatrix) * normal);`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vWPos;
+varying vec3 vWNrm;
+uniform float triScale;
+vec2 triUV() {
+  vec3 a = abs(vWNrm);
+  if (a.x > a.y && a.x > a.z)      return vec2(vWPos.z, vWPos.y) * triScale;
+  else if (a.z > a.x && a.z > a.y) return vec2(vWPos.x, vWPos.y) * triScale;
+  else                              return vec2(vWPos.x, vWPos.z) * triScale;
+}`)
+      .replace('#include <map_fragment>', `#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, triUV() );
+  #ifdef DECODE_VIDEO_TEXTURE
+    sampledDiffuseColor = vec4( mix( pow( sampledDiffuseColor.rgb * 0.9478672986 + vec3( 0.0521327014 ), vec3( 2.4 ) ), sampledDiffuseColor.rgb * 0.0773993808, vec3( lessThanEqual( sampledDiffuseColor.rgb, vec3( 0.04045 ) ) ) ), sampledDiffuseColor.w );
+  #endif
+  diffuseColor *= sampledDiffuseColor;
+#endif`)
+      .replace('#include <normal_fragment_maps>', `#ifdef USE_NORMALMAP_TANGENTSPACE
+  vec3 mapN = texture2D( normalMap, triUV() ).xyz * 2.0 - 1.0;
+  mapN.xy *= normalScale;
+  normal = normalize(tbn * mapN);
+#endif`)
+      .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness;
+#ifdef USE_ROUGHNESSMAP
+  vec4 texelRoughness = texture2D( roughnessMap, triUV() );
+  roughnessFactor *= texelRoughness.g;
+#endif`);
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// BUILDING MATERIALS
+// ═════════════════════════════════════════════════════════════════════════
+const stoneScale = 1 / stoneTex.sizeM;
+
+const matStone = new THREE.MeshStandardMaterial({
+  color: 0xeae0cb, map: stoneTex.map,
+  normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.9, 0.9),
+  roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
+  metalness: 0.02, envMapIntensity: 0.9,
+});
+injectTriplanar(matStone, stoneScale);
+
+const matStoneShade = new THREE.MeshStandardMaterial({
+  color: 0xd5cab3, map: stoneTex.map,
+  normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.9, 0.9),
+  roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
+  metalness: 0.02, envMapIntensity: 0.85,
+});
+injectTriplanar(matStoneShade, stoneScale);
+
+const matParapet = new THREE.MeshStandardMaterial({
+  color: 0xeee5d2, map: stoneTex.map,
+  normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.7, 0.7),
+  roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
+  metalness: 0.02, envMapIntensity: 1.0,
+});
+injectTriplanar(matParapet, stoneScale);
+
+const matSeam = new THREE.MeshStandardMaterial({
+  color: 0x4a525a, map: seamTex.map,
+  normalMap: seamTex.normalMap, normalScale: new THREE.Vector2(1.2, 1.2),
+  roughnessMap: seamTex.roughnessMap, roughness: 0.55,
+  metalness: 0.55, envMapIntensity: 1.1,
+  side: THREE.DoubleSide,
+});
+
+const matRoof = new THREE.MeshStandardMaterial({
+  color: 0x4a525a, roughness: 0.55, metalness: 0.45, envMapIntensity: 1.1,
+});
+
+const matCore = new THREE.MeshStandardMaterial({ color: 0x222629, roughness: 1.0 });
+
+const matGlass = new THREE.MeshPhysicalMaterial({
+  color: 0x1b2530, roughness: 0.05, metalness: 0.0,
+  reflectivity: 0.55, clearcoat: 0.6, clearcoatRoughness: 0.10,
+  envMapIntensity: 1.6,
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// BUILDING GEOMETRY — UNCHANGED
+// ═════════════════════════════════════════════════════════════════════════
+const root = new THREE.Group();
+
+function box(sx, sy, sz, mat, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  root.add(m);
+  return m;
+}
+
+const FACADES = {
+  PX: { axis: 'x', sign: +1, plane: +WALL_FACE_X, span: L },
+  NX: { axis: 'x', sign: -1, plane: -WALL_FACE_X, span: L },
+  PZ: { axis: 'z', sign: +1, plane: +WALL_FACE_Z, span: W },
+  NZ: { axis: 'z', sign: -1, plane: -WALL_FACE_Z, span: W },
+};
+
+function onFacade(f, uPos, yC, uSize, ySize, outFace, depth, mat) {
+  const center = f.plane + f.sign * (outFace + depth / 2);
+  if (f.axis === 'x') return box(depth, ySize, uSize, mat, center, yC, uPos);
+  else                return box(uSize, ySize, depth, mat, uPos, yC, center);
+}
+function mapW(f, n, u, y) {
+  return (f.axis === 'x') ? new THREE.Vector3(n, y, u) : new THREE.Vector3(u, y, n);
+}
+function boxAxis(f, nC, uC, yC, nS, uS, yS, mat) {
+  return (f.axis === 'x') ? box(nS, yS, uS, mat, nC, yC, uC)
+                          : box(uS, yS, nS, mat, uC, yC, nC);
+}
+function tri(a, b, c, mat) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z]), 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0,0, 1,0, 1,1]), 2));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true;
+  root.add(m); return m;
+}
+
+function bayCenters(span, count, margin) {
+  const usable = span - 2 * margin;
+  const step = usable / count;
+  const out = [];
+  for (let i = 0; i < count; i++) out.push(-span / 2 + margin + (i + 0.5) * step);
+  return { centers: out, step };
+}
+
+function window2(f, uPos, yb, yt, wWidth, base = 0) {
+  const yC = (yb + yt) / 2, ySize = yt - yb;
+  const fr = 0.10, proj = 0.09;
+  onFacade(f, uPos, yC, wWidth, ySize, base + 0.0, 0.04, matGlass);
+  onFacade(f, uPos, yt + fr / 2, wWidth + 2 * fr, fr, base, proj, matStoneShade);
+  onFacade(f, uPos, yb - fr / 2, wWidth + 2 * fr, fr, base, proj, matStoneShade);
+  onFacade(f, uPos - wWidth / 2 - fr / 2, yC, fr, ySize, base, proj, matStone);
+  onFacade(f, uPos + wWidth / 2 + fr / 2, yC, fr, ySize, base, proj, matStone);
+}
+
+const bayLong  = bayCenters(L, 9, 1.5);   // 9 bays per long facade (step≈3.44 m)
+const bayShort = bayCenters(W, 5, 1.6);
+function baysFor(f) { return (f.axis === 'x') ? bayLong : bayShort; }
+
+// SOLID CORE
+box(W, H_F1 + H_F2, L, matStone, 0, (Y_F1 + Y_MAN) / 2, 0);
+box(W - 0.7, H_F1 + H_F2 - 0.2, L - 0.7, matCore, 0, (Y_F1 + Y_MAN) / 2, 0);
+box(W + 0.3, PLINTH, L + 0.3, matStoneShade, 0, PLINTH / 2, 0);
+
+// PER-FACADE ARTICULATION — Model B: 1F tall vitrage, 2F uniform windows
+const WIN_W = 1.60;                    // 2F window width
+const WIN_H = 2.10;                    // 2F window height
+const WIN_2F_B = Y_F2 + SILL;         // 3.60 — 2F sill above floor
+const WIN_2F_T = WIN_2F_B + WIN_H;    // 5.70
+
+// Storefront vitrage dimensions (1F)
+const VIT_W  = 2.20;                   // wide glazing panel (vs WIN_W=1.60)
+const VIT_B  = PLINTH;                 // 0.55 — starts at plinth top
+const VIT_T  = Y_F2 - 0.25;           // 2.75 — just below belt cornice (starts 2.70)
+const VIT_H  = VIT_T - VIT_B;         // 2.20 m tall
+
+function vitrage1F(f, uPos) {
+  const fr = 0.06, proj = 0.06;        // thin storefront frame
+  const yC = (VIT_B + VIT_T) / 2;
+  // Main glass pane
+  onFacade(f, uPos, yC, VIT_W, VIT_H, 0.0, 0.04, matGlass);
+  // Top transom
+  onFacade(f, uPos, VIT_T + fr / 2, VIT_W + 2 * fr, fr, 0.0, proj, matStoneShade);
+  // Bottom sill
+  onFacade(f, uPos, VIT_B - fr / 2, VIT_W + 2 * fr, fr, 0.0, proj, matStoneShade);
+  // Left mullion
+  onFacade(f, uPos - VIT_W / 2 - fr / 2, yC, fr, VIT_H, 0.0, proj, matStone);
+  // Right mullion
+  onFacade(f, uPos + VIT_W / 2 + fr / 2, yC, fr, VIT_H, 0.0, proj, matStone);
+  // Horizontal mid-rail at ≈1.10 m for visual rhythm (divides storefront)
+  onFacade(f, uPos, PLINTH + 1.10, VIT_W, 0.08, 0.0, proj + 0.01, matStoneShade);
+}
+
+for (const key of ['PX', 'NX', 'PZ', 'NZ']) {
+  const f = FACADES[key];
+  const { centers, step } = baysFor(f);
+
+  // Rusticated base band — raised plinth course on lower 1F wall
+  onFacade(f, 0, PLINTH + 0.38, f.span, 0.76, 0.0, 0.07, matStoneShade);
+
+  // 1F storefront vitrage
+  for (const c of centers) vitrage1F(f, c);
+
+  // Classical pilasters / lesenes — between bays, running full height 1F+2F
+  const pilW   = 0.36;
+  const pilProj = 0.10;
+  for (let i = 0; i <= centers.length; i++) {
+    const pc = (i === 0) ? centers[0] - step / 2
+             : (i === centers.length) ? centers[centers.length - 1] + step / 2
+             : (centers[i - 1] + centers[i]) / 2;
+    // Full-height shaft from ground to Y_MAN
+    onFacade(f, pc, Y_MAN / 2, pilW, Y_MAN, 0.0, pilProj, matStone);
+    // Pilaster capital at belt-cornice level (slightly wider/deeper)
+    onFacade(f, pc, Y_F2 - 0.02, pilW + 0.08, 0.26, 0.0, pilProj + 0.05, matStoneShade);
+    // Pilaster base cap at plinth top
+    onFacade(f, pc, PLINTH + 0.06, pilW + 0.06, 0.18, 0.0, pilProj + 0.04, matStoneShade);
+  }
+
+  // Belt / string cornice between floors — prominent projection
+  onFacade(f, 0, Y_F2 - 0.15, f.span, 0.30, 0.0, 0.14, matStoneShade);
+
+  // 2F windows — coaxial with 1F
+  for (const c of centers) window2(f, c, WIN_2F_B, WIN_2F_T, WIN_W);
+
+}
+
+// Карниз + колено мансарды
+// Knee walls: Y_MAN(6.0) → Y_EAVE(7.4) on all 4 sides
+const kneeH = Y_EAVE - Y_MAN;
+box(W + 0.10, kneeH, 0.28, matStone,      0, Y_MAN + kneeH / 2,  L / 2 + 0.14);  // +Z
+box(W + 0.10, kneeH, 0.28, matStoneShade, 0, Y_MAN + kneeH / 2, -L / 2 - 0.14); // -Z
+box(0.28, kneeH, L + 0.10, matStone,       W / 2 + 0.14, Y_MAN + kneeH / 2, 0);  // +X
+box(0.28, kneeH, L + 0.10, matStoneShade, -W / 2 - 0.14, Y_MAN + kneeH / 2, 0); // -X
+box(W + 0.7, 0.45, L + 0.7, matStoneShade, 0, Y_EAVE - 0.02, 0);  // cornice at eave
+
+// ─── ВАЛЬМОВАЯ КРОВЛЯ ───
+// Eave at Y_EAVE=7.4 · Ridge at Y_RIDGE=11.0 · RIDGE_HALF_Z=14 (steeper hip ends)
+function hipQuad(v0, v1, v2, v3, mat) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    v0[0],v0[1],v0[2], v1[0],v1[1],v1[2], v2[0],v2[1],v2[2],
+    v0[0],v0[1],v0[2], v2[0],v2[1],v2[2], v3[0],v3[1],v3[2],
+  ]), 3));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true;
+  root.add(m); return m;
+}
+function hipTri(v0, v1, v2, mat) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    v0[0],v0[1],v0[2], v1[0],v1[1],v1[2], v2[0],v2[1],v2[2],
+  ]), 3));
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true;
+  root.add(m); return m;
+}
+
+const hHW = W / 2, hHL = L / 2, hRz = RIDGE_HALF_Z;
+const yEv = Y_EAVE, yRd = Y_RIDGE;
+
+// Eave corners
+const cFL = [+hHW, yEv, -hHL];  // front-left  (+X,−Z)
+const cFR = [+hHW, yEv, +hHL];  // front-right (+X,+Z)
+const cBR = [-hHW, yEv, +hHL];  // back-right  (−X,+Z)
+const cBL = [-hHW, yEv, -hHL];  // back-left   (−X,−Z)
+// Ridge ends at x=0
+const rL  = [0, yRd, -hRz];
+const rR  = [0, yRd, +hRz];
+
+// Long slope +X — CCW for +X outward normal
+hipQuad(cFL, rL, rR, cFR, matSeam);
+// Long slope −X — CCW for −X outward normal
+hipQuad(cBR, rR, rL, cBL, matSeam);
+// Hip slope +Z — CCW for +Z outward normal
+hipTri(cBR, cFR, rR, matSeam);
+// Hip slope −Z — CCW for −Z outward normal
+hipTri(cBL, rL, cFL, matSeam);
+
+// Ridge cap beam
+box(0.22, 0.16, 2 * hRz + 0.20, matRoof, 0, yRd - 0.08, 0);
+
+// ─── DORMERS: wall dormers cutting the cornice (окна прорезают карниз) ──────
+// Glass starts below Y_EAVE (into 2F wall), rises through cornice into dormer gable above.
+const dWidth      = 1.60;
+const dDepth      = 0.45;
+const dBelow      = 0.85;                       // glass below eave
+const dAbove      = 1.00;                       // glass + dormer above eave
+const dGlassBaseY = Y_EAVE - dBelow;            // 6.55 — sill well into 2F wall
+const dWallTopY   = Y_EAVE + dAbove;            // 8.40 — top of dormer walls
+const dGlassH     = dWallTopY - dGlassBaseY;    // 1.85
+const dGableH     = 0.40;
+const dPeakY      = dWallTopY + dGableH;        // 8.80
+const dGW         = dWidth / 2 + 0.10;          // gable half-width with overhang
+
+// Dormer front face proud of cornice (cornice face ≈ hHW+0.35=9.35)
+const dFrontX = hHW + 0.45;             // 9.45
+const dBodyXC = dFrontX - dDepth / 2;   // 9.225
+const dBackX  = dFrontX - dDepth;       // 9.0 (flush with facade wall face)
+// Main slope X at dormer-roof heights (slope: x = hHW - (y-yEv)*(hHW/(yRd-yEv)))
+const dSlXBase = hHW - (dWallTopY - yEv) * (hHW / (yRd - yEv));  // 6.5 at y=8.4
+const dSlXPeak = hHW - (dPeakY    - yEv) * (hHW / (yRd - yEv));  // 5.5 at y=8.8
+
+function buildDormer(sign, zc) {
+  const fX  = sign * dFrontX;
+  const bX  = sign * dBackX;
+  const bcX = sign * dBodyXC;
+  // Tall glass panel straddling the eave/cornice line
+  box(0.05, dGlassH * 0.88, dWidth * 0.78, matGlass,
+      fX + sign * 0.02, dGlassBaseY + dGlassH * 0.46, zc);
+  // Sill at glass bottom (below cornice)
+  box(0.08, 0.10, dWidth * 0.85, matStoneShade,
+      fX + sign * 0.03, dGlassBaseY + 0.07, zc);
+  // Lintel at glass top (inside dormer)
+  box(0.08, 0.10, dWidth * 0.85, matStoneShade,
+      fX + sign * 0.03, dWallTopY - 0.08, zc);
+  // Left cheek — full height from below eave to dormer top
+  box(dDepth + 0.04, dGlassH, 0.07, matStone,
+      bcX, (dGlassBaseY + dWallTopY) / 2, zc - dWidth / 2 - 0.035);
+  // Right cheek
+  box(dDepth + 0.04, dGlassH, 0.07, matStone,
+      bcX, (dGlassBaseY + dWallTopY) / 2, zc + dWidth / 2 + 0.035);
+  // Extended dormer roof panels — run back from gable peak to main slope intersection
+  const sXb = sign * dSlXBase;   // slope x at y=dWallTopY (±6.5)
+  const sXp = sign * dSlXPeak;   // slope x at y=dPeakY    (±5.5)
+  if (sign > 0) {
+    // Left panel: front-eave → slope-eave → slope-ridge → front-ridge
+    hipQuad([fX, dWallTopY, zc-dGW], [sXb, dWallTopY, zc-dGW], [sXp, dPeakY, zc], [fX, dPeakY, zc], matSeam);
+    // Right panel
+    hipQuad([fX, dPeakY, zc], [sXp, dPeakY, zc], [sXb, dWallTopY, zc+dGW], [fX, dWallTopY, zc+dGW], matSeam);
+    // Front gable triangle
+    tri(new THREE.Vector3(fX, dWallTopY, zc+dGW-0.06),
+        new THREE.Vector3(fX, dWallTopY, zc-dGW+0.06),
+        new THREE.Vector3(fX, dPeakY, zc), matStone);
+  } else {
+    // Left panel (−X)
+    hipQuad([fX, dPeakY, zc], [sXp, dPeakY, zc], [sXb, dWallTopY, zc-dGW], [fX, dWallTopY, zc-dGW], matSeam);
+    // Right panel (−X)
+    hipQuad([fX, dWallTopY, zc+dGW], [sXb, dWallTopY, zc+dGW], [sXp, dPeakY, zc], [fX, dPeakY, zc], matSeam);
+    // Front gable triangle
+    tri(new THREE.Vector3(fX, dWallTopY, zc-dGW+0.06),
+        new THREE.Vector3(fX, dWallTopY, zc+dGW-0.06),
+        new THREE.Vector3(fX, dPeakY, zc), matStone);
+  }
+  // Ridge from gable peak back to slope intersection
+  const ridgeMidX = sign * (dFrontX + dSlXPeak) / 2;
+  const ridgeLen  = dFrontX - dSlXPeak;  // ≈ 3.95 m
+  box(ridgeLen, 0.10, 0.10, matRoof, ridgeMidX, dPeakY + 0.04, zc);
+}
+
+// 7 dormers per long slope: centered, step 4 m, outermost at ±12 m (2 m inside ridge end ±14)
+const dormerCentersZ = [-12, -8, -4, 0, 4, 8, 12];
+for (const zc of dormerCentersZ) {
+  buildDormer(+1, zc);
+  buildDormer(-1, zc);
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// ENVIRONMENT GEOMETRY
+// Building: X=[-9,+9], Z=[-17,+17], Y=[0,11]
+// Street side: +X (PX long facade at x=+9)
+// Embankment side: +Z (PZ short facade at z=+17)
+// ═════════════════════════════════════════════════════════════════════════
+
+// Environment materials
+const matAsphalt = new THREE.MeshStandardMaterial({
+  color: 0x1c1c1e,
+  map: asphTex.map, normalMap: asphTex.normalMap,
+  normalScale: new THREE.Vector2(0.6, 0.6),
+  roughnessMap: asphTex.roughnessMap, roughness: 0.95, metalness: 0,
+  envMapIntensity: 0.3,
+});
+asphTex.map.repeat.set(30, 30);
+asphTex.normalMap.repeat.set(30, 30);
+asphTex.roughnessMap.repeat.set(30, 30);
+
+const matWater = new THREE.MeshStandardMaterial({
+  color: 0x2d6878,
+  map: waterTex.map, normalMap: waterTex.normalMap,
+  normalScale: new THREE.Vector2(0.8, 0.8),
+  roughness: 0.12, metalness: 0.05, envMapIntensity: 1.2,
+});
+waterTex.map.repeat.set(20, 20);
+waterTex.normalMap.repeat.set(20, 20);
+
+// cream stucco for neighbor buildings
+const matStucco = new THREE.MeshStandardMaterial({
+  color: 0xd8cc90, roughness: 0.88, metalness: 0, envMapIntensity: 0.5,
+});
+const matStuccoB = new THREE.MeshStandardMaterial({
+  color: 0xc8be82, roughness: 0.88, metalness: 0, envMapIntensity: 0.5,
+});
+
+const matCurb = new THREE.MeshStandardMaterial({
+  color: 0xa8a4a0, roughness: 0.92, metalness: 0,
+});
+const matParapetStone = new THREE.MeshStandardMaterial({
+  color: 0x9e9890, roughness: 0.90, metalness: 0, envMapIntensity: 0.6,
+});
+const matLamp = new THREE.MeshStandardMaterial({
+  color: 0x1a1c1e, roughness: 0.55, metalness: 0.75, envMapIntensity: 1.0,
+});
+const matGreenPlanter = new THREE.MeshStandardMaterial({
+  color: 0x2c5e18, roughness: 0.9, metalness: 0,
+});
+const matLaneWhite = new THREE.MeshStandardMaterial({
+  color: 0xd8d4c0, roughness: 0.75, metalness: 0,
+});
+
+// Helper: environment mesh (added to scene, not root, so doesn't affect building)
+// Note: scene not yet created here — we store them and add after scene init
+const envMeshes = [];
+function envBox(sx, sy, sz, mat, x, y, z, options = {}) {
+  const geo = new THREE.BoxGeometry(sx, sy, sz);
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  if (options.rotY) m.rotation.y = options.rotY;
+  m.castShadow = options.castShadow !== false;
+  m.receiveShadow = true;
+  envMeshes.push(m);
+  return m;
+}
+function envSphere(r, mat, x, y, z) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  envMeshes.push(m); return m;
+}
+function envCylinder(rt, rb, h, segs, mat, x, y, z) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, segs), mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  envMeshes.push(m); return m;
+}
+function envPlane(w, h, mat, x, y, z, rotX = -Math.PI / 2) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.rotation.x = rotX;
+  m.position.set(x, y, z);
+  m.receiveShadow = true;
+  m.castShadow = false;
+  envMeshes.push(m); return m;
+}
+
+// ─ Sidewalk is covered by the main 400×400 concrete ground plane ──────────
+
+// ─ Curb on +X side ──────────────────────────────────────────────────────
+envBox(0.30, 0.22, 58, matCurb, 13.0, 0.11, 0);   // curb along street
+
+// ─ Asphalt street: x=[13.3, 19.3], z=[-30, 30] ──────────────────────────
+envBox(6.0, 0.04, 62, matAsphalt, 16.3, 0.02, 0, { castShadow: false });
+
+// ─ Lane markings (dashed white center line) ──────────────────────────────
+for (let z = -26; z <= 26; z += 6) {
+  envBox(0.12, 0.05, 2.5, matLaneWhite, 16.3, 0.05, z, { castShadow: false });
+}
+
+// ─ Far sidewalk (other side of street) ───────────────────────────────────
+envBox(3.0, 0.04, 62, matCurb, 20.8, 0.02, 0, { castShadow: false });
+// Curb on far side
+envBox(0.25, 0.20, 62, matCurb, 22.25, 0.10, 0);
+
+// ─ Neighbor buildings — pushed well across the street so cameras see building ─
+// Buildings are across a wide ~22m street; cameras at X≈16-28 face TOWARD building (−X dir)
+// so neighbors at X=42+ are behind the camera and won't block the main building.
+envBox(10, 8.5, 26, matStucco,  43, 4.25, -4);
+envBox(10.4, 0.3, 26.4, matCurb, 43, 8.65, -4);
+
+envBox(9, 7.0, 20, matStuccoB, 43, 3.5, 22);
+envBox(9.4, 0.25, 20.4, matCurb, 43, 7.13, 22);
+
+envBox(11, 9.5, 18, matStucco, 46, 4.75, -24);
+envBox(11.4, 0.3, 18.4, matCurb, 46, 9.65, -24);
+
+// ─ -X side: small sidewalk + embankment parapet ───────────────────────────
+envBox(0.30, 0.22, 48, matCurb, -13.0, 0.11, 0);   // curb
+
+// Embankment parapet (stone wall, 1.0m high, 0.5m thick) running in Z direction
+envBox(0.50, 1.05, 56, matParapetStone, -13.5, 0.53, 4);
+// parapet cap
+envBox(0.70, 0.14, 56, matCurb, -13.5, 1.13, 4);
+
+// ─ Water plane beyond embankment ─────────────────────────────────────────
+envBox(80, 0.06, 80, matWater, -55, -0.03, 4, { castShadow: false });
+
+// ─ +Z end: short sidewalk and embankment extension ────────────────────────
+// Sidewalk in front of +Z face: z=[17.15, 21], x=[-16, 16]
+envBox(0.30, 0.22, 34, matCurb, 0, 0.11, 21.15, { rotY: Math.PI / 2 });  // curb
+
+// Embankment parapet extending along +Z side toward river
+envBox(34, 1.05, 0.50, matParapetStone, -4, 0.53, 21.5);
+envBox(34, 0.14, 0.70, matCurb, -4, 1.13, 21.5);
+
+// ─ Street lamps along +X sidewalk ─────────────────────────────────────────
+[-15, -5, 5, 15].forEach(z => {
+  // pole
+  envCylinder(0.06, 0.08, 4.2, 8, matLamp, 12.0, 2.1, z);
+  // lamp arm (horizontal box)
+  envBox(1.2, 0.10, 0.10, matLamp, 12.6, 4.18, z);
+  // lamp head
+  envBox(0.55, 0.22, 0.22, matLamp, 13.2, 4.10, z);
+});
+
+// ─ Planters at building corners ──────────────────────────────────────────
+[[-6.5, 18.5], [6.5, 18.5], [-6.5, -18.5], [6.5, -18.5]].forEach(([x, z]) => {
+  envBox(1.4, 0.80, 1.4, matParapetStone, x, 0.40, z);
+  envSphere(0.75, matGreenPlanter, x, 1.10, z);
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// SCENE / RENDERER
+// ═════════════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.add(root);
+
+// Add all environment meshes to scene
+for (const m of envMeshes) scene.add(m);
+
+// ── seam material repeat ─────────────────────────────────────────────────
+seamTex.map.repeat.set(2, 2);
+seamTex.normalMap.repeat.set(2, 2);
+seamTex.roughnessMap.repeat.set(2, 2);
+
+// ── Procedural sunset sky gradient as background ─────────────────────────
+function makeSunsetSkyTex() {
+  const c = document.createElement('canvas');
+  c.width = 4; c.height = 512;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0.00, '#0e2060');  // rich blue zenith
+  g.addColorStop(0.25, '#1850b0');  // clear blue sky
+  g.addColorStop(0.42, '#5080d0');  // lighter blue near horizon
+  g.addColorStop(0.52, '#e06820');  // orange-red horizon band
+  g.addColorStop(0.60, '#f09840');  // bright warm orange glow
+  g.addColorStop(0.70, '#e8b870');  // golden yellow haze
+  g.addColorStop(1.00, '#d0b890');  // warm tan ground sky
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 4, 512);
+  const t = new THREE.CanvasTexture(c);
+  t.mapping = THREE.EquirectangularReflectionMapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+scene.background = makeSunsetSkyTex();
+scene.backgroundBlurriness = 0.0;
+
+// ── HDR for environment reflections (not background) ─────────────────────
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+new RGBELoader().load('./libs/textures/hdr/kloofendal_48d_partly_cloudy_puresky_1k.hdr', (tex) => {
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const envMap = pmrem.fromEquirectangular(tex).texture;
+  scene.environment = envMap;   // PBR reflections only, keep gradient background
+  tex.dispose();
+  pmrem.dispose();
+  window.__envReady = true;
+});
+
+// ── Ground: concrete pavement (large, covers sidewalk area) ──────────────
+const texLoader = new THREE.TextureLoader();
+const groundDiff = texLoader.load('./libs/textures/ground/concrete_pavement_diff_1k.jpg');
+const groundNrm  = texLoader.load('./libs/textures/ground/concrete_pavement_nor_gl_1k.jpg');
+const groundRgh  = texLoader.load('./libs/textures/ground/concrete_pavement_rough_1k.jpg');
+for (const t of [groundDiff, groundNrm, groundRgh]) {
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(40, 40);
+  t.anisotropy = 8;
+}
+groundDiff.colorSpace = THREE.SRGBColorSpace;
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(400, 400),
+  new THREE.MeshStandardMaterial({
+    map: groundDiff, normalMap: groundNrm, roughnessMap: groundRgh,
+    color: 0xb4b0a6, roughness: 1.0, metalness: 0.0, envMapIntensity: 0.4,
+  })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ── GOLDEN HOUR LIGHTING ──────────────────────────────────────────────────
+// Hemisphere: warm sky / warm ground fill
+scene.add(new THREE.HemisphereLight(0xb8c8e8, 0x8a7860, 0.50));
+
+// Directional sun: low golden hour, from +X+Z direction (behind Camera A)
+// This lights the PX and PZ faces with warm golden raking light
+const sun = new THREE.DirectionalLight(0xffd4a0, 4.2);
+sun.position.set(48, 22, 58);   // low sun from +X+Z quadrant, ~20° elevation
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 300;
+sun.shadow.camera.left  = -80;
+sun.shadow.camera.right = 60;
+sun.shadow.camera.top   = 60;
+sun.shadow.camera.bottom = -20;
+sun.shadow.bias = -0.0002;
+sun.shadow.normalBias = 0.02;
+sun.shadow.radius = 3;
+scene.add(sun);
+scene.add(sun.target);
+sun.target.position.set(0, 2, 0);
+
+// Warm fill from opposite side (bounce from embankment/water)
+const fillLight = new THREE.DirectionalLight(0xa0c0e8, 0.55);
+fillLight.position.set(-30, 12, -20);
+fillLight.castShadow = false;
+scene.add(fillLight);
+
+// ── камера: угловой 3/4 (default) ────────────────────────────────────────
+const camera = new THREE.PerspectiveCamera(42, 16 / 11, 0.1, 2000);
+camera.position.set(44, 5.8, 30);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(2, 4.3, 0);
+controls.enableDamping = true;
+controls.minDistance = 12;
+controls.maxDistance = 300;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.update();
+
+// ── EffectComposer post-processing ───────────────────────────────────────
+let composer;
+try {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+
+  // Subtle bloom — highlights on sun-lit glass, metal, water
+  const bloom = new UnrealBloomPass(
+    new THREE.Vector2(innerWidth, innerHeight), 0.30, 0.4, 0.85);
+  composer.addPass(bloom);
+
+  // OutputPass handles ACESFilmic tone-mapping → sRGB output
+  composer.addPass(new OutputPass());
+
+  // FXAA anti-aliasing on top of MSAA
+  const fxaaPass = new ShaderPass(FXAAShader);
+  fxaaPass.uniforms['resolution'].value.set(1 / innerWidth, 1 / innerHeight);
+  composer.addPass(fxaaPass);
+
+  window.__composer = composer;
+} catch (e) {
+  console.warn('EffectComposer failed, falling back to direct render:', e.message);
+  composer = null;
+}
+
+function doRender() {
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
+}
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  if (composer) {
+    composer.setSize(w, h);
+    const fxaaPass = composer.passes.find(p => p.uniforms && p.uniforms['resolution']);
+    if (fxaaPass) fxaaPass.uniforms['resolution'].value.set(1 / w, 1 / h);
+  }
+}
+addEventListener('resize', resize);
+resize();
+
+function loop() {
+  requestAnimationFrame(loop);
+  controls.update();
+  doRender();
+}
+loop();
+
+window.setView = (px, py, pz, tx, ty, tz, fov) => {
+  camera.position.set(px, py, pz);
+  controls.target.set(tx, ty, tz);
+  if (fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  controls.update();
+  doRender();
+};
+window.__THREE = THREE;
+window.__scene = scene;
+window.__root  = root;
+window.__ready = true;
+</script>
+</body>
+</html>
