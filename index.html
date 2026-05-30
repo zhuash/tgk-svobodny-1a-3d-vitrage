@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 7 слух.длин. (без слух. торц.) · vB6</div>
+  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 7 слух.длин. заглублённых · vB7</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -594,41 +594,39 @@ hipTri(cBL, rL, cFL, matSeam);
 // Ridge cap beam
 box(0.22, 0.16, 2 * hRz + 0.20, matRoof, 0, yRd - 0.08, 0);
 
-// ─── DORMERS: wall dormers cutting the cornice (окна прорезают карниз) ──────
-// Glass starts below Y_EAVE (into 2F wall), rises through cornice into dormer gable above.
+// ─── DORMERS: recessed on slope — eave cornice line is continuous (vB7) ──────
+// Front face set back from eave cornice (9.35). Glass starts above cornice top (~7.60).
 const dWidth      = 1.60;
-const dDepth      = 0.45;
-const dBelow      = 0.85;                       // glass below eave
-const dAbove      = 1.00;                       // glass + dormer above eave
-const dGlassBaseY = Y_EAVE - dBelow;            // 6.55 — sill well into 2F wall
-const dWallTopY   = Y_EAVE + dAbove;            // 8.40 — top of dormer walls
-const dGlassH     = dWallTopY - dGlassBaseY;    // 1.85
+const dDepth      = 0.80;                        // dormer body depth on slope
+const dGlassBaseY = Y_EAVE + 0.25;              // 7.65 — above cornice top
+const dGlassH     = 1.50;                        // glass height
+const dWallTopY   = dGlassBaseY + dGlassH;      // 9.15
 const dGableH     = 0.40;
-const dPeakY      = dWallTopY + dGableH;        // 8.80
-const dGW         = dWidth / 2 + 0.10;          // gable half-width with overhang
+const dPeakY      = dWallTopY + dGableH;        // 9.55
+const dGW         = dWidth / 2 + 0.10;          // 0.90 — gable half-width with overhang
 
-// Dormer front face proud of cornice (cornice face ≈ hHW+0.35=9.35)
-const dFrontX = hHW + 0.45;             // 9.45
-const dBodyXC = dFrontX - dDepth / 2;   // 9.225
-const dBackX  = dFrontX - dDepth;       // 9.0 (flush with facade wall face)
+// Front face recessed behind eave cornice face (cornice face ≈ x=9.35)
+const dFrontX = hHW - 0.30;             // 8.70 — on slope above eave
+const dBodyXC = dFrontX - dDepth / 2;   // 8.30
+const dBackX  = dFrontX - dDepth;       // 7.90
 // Main slope X at dormer-roof heights (slope: x = hHW - (y-yEv)*(hHW/(yRd-yEv)))
-const dSlXBase = hHW - (dWallTopY - yEv) * (hHW / (yRd - yEv));  // 6.5 at y=8.4
-const dSlXPeak = hHW - (dPeakY    - yEv) * (hHW / (yRd - yEv));  // 5.5 at y=8.8
+const dSlXBase = hHW - (dWallTopY - yEv) * (hHW / (yRd - yEv));  // ≈4.63 at y=9.15
+const dSlXPeak = hHW - (dPeakY    - yEv) * (hHW / (yRd - yEv));  // ≈3.63 at y=9.55
 
 function buildDormer(sign, zc) {
   const fX  = sign * dFrontX;
   const bX  = sign * dBackX;
   const bcX = sign * dBodyXC;
-  // Tall glass panel straddling the eave/cornice line
+  // Glass panel above eave/cornice
   box(0.05, dGlassH * 0.88, dWidth * 0.78, matGlass,
       fX + sign * 0.02, dGlassBaseY + dGlassH * 0.46, zc);
-  // Sill at glass bottom (below cornice)
+  // Sill at glass base
   box(0.08, 0.10, dWidth * 0.85, matStoneShade,
       fX + sign * 0.03, dGlassBaseY + 0.07, zc);
-  // Lintel at glass top (inside dormer)
+  // Lintel at glass top
   box(0.08, 0.10, dWidth * 0.85, matStoneShade,
       fX + sign * 0.03, dWallTopY - 0.08, zc);
-  // Left cheek — full height from below eave to dormer top
+  // Left cheek — full glass height on slope
   box(dDepth + 0.04, dGlassH, 0.07, matStone,
       bcX, (dGlassBaseY + dWallTopY) / 2, zc - dWidth / 2 - 0.035);
   // Right cheek
