@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 9 слух.длин.+5 слух.торц. · vB4</div>
+  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 7 слух.длин.+1 слух.торц. · vB5</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -662,14 +662,14 @@ function buildDormer(sign, zc) {
   box(ridgeLen, 0.10, 0.10, matRoof, ridgeMidX, dPeakY + 0.04, zc);
 }
 
-// 9 dormers per long slope: all bay positions including corner axes
-const dormerCentersZ = bayLong.centers;
+// 7 dormers per long slope: inner 7 bays (skip outermost on each end) — v12 drainage simplification
+const dormerCentersZ = bayLong.centers.slice(1, -1);
 for (const zc of dormerCentersZ) {
   buildDormer(+1, zc);
   buildDormer(-1, zc);
 }
 
-// Hip-slope dormers on short facades (+Z and -Z) — coaxial with short-facade wall bays
+// Hip-slope dormers on short facades (+Z and -Z) — 1 center dormer per end (reduced for drainage)
 const dFrontZ = hHL + 0.45;          // 17.45 — proud of eave by same offset as long-slope dormers
 const dBodyZC = dFrontZ - dDepth / 2; // 17.225
 // Hip slope z at dormer heights: z = hHL - (y-yEv)*(hHL-hRz)/(yRd-yEv)
@@ -716,8 +716,9 @@ function buildDormerHip(signZ, xc) {
   box(0.10, 0.10, ridgeLen, matRoof, xc, dPeakY + 0.04, ridgeMidZ);
 }
 
-// 5 hip-slope dormers per short end (+Z and -Z)
-for (const xc of bayShort.centers) {
+// 1 center hip-slope dormer per short end (+Z and -Z)
+const hipDormerCentersX = [bayShort.centers[Math.floor(bayShort.centers.length / 2)]];
+for (const xc of hipDormerCentersX) {
   buildDormerHip(+1, xc);
   buildDormerHip(-1, xc);
 }
