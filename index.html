@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9 витражей 1эт 2.80×2.60м · 9 окон 2эт 1.60×2.10м · 7 слуховых · vB2</div>
+  <div class="dim">11+9 витр.1эт(улица+река) · 7 витр.торц. · 11/9/7 ок.2эт · 7 слух. · vB3</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -439,9 +439,21 @@ function window2(f, uPos, yb, yt, wWidth, base = 0) {
   onFacade(f, uPos + wWidth / 2 + fr / 2, yC, fr, ySize, base, proj, matStone);
 }
 
-const bayLong  = bayCenters(L, 9, 1.5);   // 9 bays per long facade (step≈3.44 m)
+const bayLong  = bayCenters(L, 9, 1.5);   // 9 inner bays (step≈3.44 m); river + dormers use this
 const bayShort = bayCenters(W, 5, 1.6);
-function baysFor(f) { return (f.axis === 'x') ? bayLong : bayShort; }
+
+// Corner-bay window extensions: add windows at the outermost axes on non-river facades
+const longWinCenters  = [-(WALL_FACE_Z - 0.75), ...bayLong.centers,  WALL_FACE_Z - 0.75];
+const shortWinCenters = [-(WALL_FACE_X - 0.75), ...bayShort.centers, WALL_FACE_X - 0.75];
+function winCentersFor(f) { return (f.axis === 'x') ? longWinCenters : shortWinCenters; }
+function pilastersFor(f) {
+  const cs = winCentersFor(f);
+  const hw = (f.axis === 'x') ? WALL_FACE_Z : WALL_FACE_X;
+  const pos = [-(hw - 0.15)];
+  for (let i = 1; i < cs.length; i++) pos.push((cs[i-1] + cs[i]) / 2);
+  pos.push(hw - 0.15);
+  return pos;
+}
 
 // SOLID CORE
 box(W, H_F1 + H_F2, L, matStone, 0, (Y_F1 + Y_MAN) / 2, 0);
@@ -471,8 +483,7 @@ function vitrage1F(f, uPos) {
   onFacade(f, uPos, 1.10, VIT_W, 0.08, 0.0, proj + 0.01, matStoneShade);
 }
 
-// River facade (NX, -X side facing Тьмака) — MAXIMUM glazing
-// bay step ≈3.44 m; glass width leaves only ~90 mm structural pier each side
+// River facade (NX, -X side facing Тьмака) — MAXIMUM glazing; keeps its 9 bays unchanged
 const RIVVIT_W = bayLong.step - 0.18;  // ≈ 3.26 m per bay
 const RIVVIT_B = 0.03;                  // near-grade threshold
 const RIVVIT_T = Y_F2 - 0.20;          // 2.80 m (higher than standard)
@@ -491,25 +502,32 @@ function vitrageRiver(f, uPos) {
 
 for (const key of ['PX', 'NX', 'PZ', 'NZ']) {
   const f = FACADES[key];
-  const { centers, step } = baysFor(f);
-  const isRiver = (key === 'NX');   // river-facing long facade (-X, toward Тьмака)
+  const isRiver = (key === 'NX');   // river-facing long facade (-X, toward Тьмака) — unchanged
+
+  // River facade keeps its 9-bay maximized glazing; all others get corner-bay extensions
+  const winCenters = isRiver ? bayLong.centers : winCentersFor(f);
 
   // 1F glazing
   if (isRiver) {
-    for (const c of centers) vitrageRiver(f, c);
+    for (const c of winCenters) vitrageRiver(f, c);
   } else {
-    for (const c of centers) vitrage1F(f, c);
+    for (const c of winCenters) vitrage1F(f, c);
   }
 
   // Classical pilasters — slim steel fins on river facade, stone on others
   const pilW    = isRiver ? 0.12 : 0.36;
   const pilProj = isRiver ? 0.05 : 0.10;
-  for (let i = 0; i <= centers.length; i++) {
-    const pc = (i === 0) ? centers[0] - step / 2
-             : (i === centers.length) ? centers[centers.length - 1] + step / 2
-             : (centers[i - 1] + centers[i]) / 2;
-    onFacade(f, pc, Y_MAN / 2, pilW, Y_MAN, 0.0, pilProj, matStone);
-    if (!isRiver) {
+  if (isRiver) {
+    const { centers, step } = bayLong;
+    for (let i = 0; i <= centers.length; i++) {
+      const pc = (i === 0) ? centers[0] - step / 2
+               : (i === centers.length) ? centers[centers.length - 1] + step / 2
+               : (centers[i - 1] + centers[i]) / 2;
+      onFacade(f, pc, Y_MAN / 2, pilW, Y_MAN, 0.0, pilProj, matStone);
+    }
+  } else {
+    for (const pc of pilastersFor(f)) {
+      onFacade(f, pc, Y_MAN / 2, pilW, Y_MAN, 0.0, pilProj, matStone);
       onFacade(f, pc, Y_F2 - 0.02, pilW + 0.08, 0.26, 0.0, pilProj + 0.05, matStoneShade);
       onFacade(f, pc, PLINTH + 0.06, pilW + 0.06, 0.18, 0.0, pilProj + 0.04, matStoneShade);
     }
@@ -519,7 +537,7 @@ for (const key of ['PX', 'NX', 'PZ', 'NZ']) {
   onFacade(f, 0, Y_F2 - 0.15, f.span, 0.30, 0.0, 0.14, matStoneShade);
 
   // 2F windows — coaxial with 1F
-  for (const c of centers) window2(f, c, WIN_2F_B, WIN_2F_T, WIN_W);
+  for (const c of winCenters) window2(f, c, WIN_2F_B, WIN_2F_T, WIN_W);
 
 }
 
