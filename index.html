@@ -741,17 +741,7 @@ envBox(3.0, 0.04, 62, matCurb, 20.8, 0.02, 0, { castShadow: false });
 // Curb on far side
 envBox(0.25, 0.20, 62, matCurb, 22.25, 0.10, 0);
 
-// ─ Neighbor buildings — pushed well across the street so cameras see building ─
-// Buildings are across a wide ~22m street; cameras at X≈16-28 face TOWARD building (−X dir)
-// so neighbors at X=42+ are behind the camera and won't block the main building.
-envBox(10, 8.5, 26, matStucco,  43, 4.25, -4);
-envBox(10.4, 0.3, 26.4, matCurb, 43, 8.65, -4);
-
-envBox(9, 7.0, 20, matStuccoB, 43, 3.5, 22);
-envBox(9.4, 0.25, 20.4, matCurb, 43, 7.13, 22);
-
-envBox(11, 9.5, 18, matStucco, 46, 4.75, -24);
-envBox(11.4, 0.3, 18.4, matCurb, 46, 9.65, -24);
+// ─ Neighbor buildings removed (client request: clean single-building scene) ─
 
 // ─ -X side: small sidewalk + embankment parapet ───────────────────────────
 envBox(0.30, 0.22, 48, matCurb, -13.0, 0.11, 0);   // curb
