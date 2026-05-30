@@ -442,10 +442,8 @@ function window2(f, uPos, yb, yt, wWidth, base = 0) {
 const bayLong  = bayCenters(L, 9, 1.5);   // 9 inner bays (step≈3.44 m); river + dormers use this
 const bayShort = bayCenters(W, 5, 1.6);
 
-// Corner-bay window extensions: add windows at the outermost axes on non-river facades
-const longWinCenters  = [-(WALL_FACE_Z - 0.75), ...bayLong.centers,  WALL_FACE_Z - 0.75];
-const shortWinCenters = [-(WALL_FACE_X - 0.75), ...bayShort.centers, WALL_FACE_X - 0.75];
-function winCentersFor(f) { return (f.axis === 'x') ? longWinCenters : shortWinCenters; }
+// v11: corner windows moved to mansard (dormer) level; wall bays unchanged
+function winCentersFor(f) { return (f.axis === 'x') ? bayLong.centers : bayShort.centers; }
 function pilastersFor(f) {
   const cs = winCentersFor(f);
   const hw = (f.axis === 'x') ? WALL_FACE_Z : WALL_FACE_X;
@@ -664,11 +662,64 @@ function buildDormer(sign, zc) {
   box(ridgeLen, 0.10, 0.10, matRoof, ridgeMidX, dPeakY + 0.04, zc);
 }
 
-// 7 dormers per long slope: coaxial with 2F windows #2–#8 (skip first and last of 9)
-const dormerCentersZ = bayLong.centers.slice(1, -1);
+// 9 dormers per long slope: all bay positions including corner axes
+const dormerCentersZ = bayLong.centers;
 for (const zc of dormerCentersZ) {
   buildDormer(+1, zc);
   buildDormer(-1, zc);
+}
+
+// Hip-slope dormers on short facades (+Z and -Z) — coaxial with short-facade wall bays
+const dFrontZ = hHL + 0.45;          // 17.45 — proud of eave by same offset as long-slope dormers
+const dBodyZC = dFrontZ - dDepth / 2; // 17.225
+// Hip slope z at dormer heights: z = hHL - (y-yEv)*(hHL-hRz)/(yRd-yEv)
+const dSlZBase = hHL - (dWallTopY - yEv) * (hHL - hRz) / (yRd - yEv);  // ≈16.17
+const dSlZPeak = hHL - (dPeakY    - yEv) * (hHL - hRz) / (yRd - yEv);  // ≈15.83
+
+function buildDormerHip(signZ, xc) {
+  const fZ  = signZ * dFrontZ;
+  const bcZ = signZ * dBodyZC;
+  // Glass panel (faces Z-outward, width in X)
+  box(dWidth * 0.78, dGlassH * 0.88, 0.05, matGlass,
+      xc, dGlassBaseY + dGlassH * 0.46, fZ - signZ * 0.02);
+  // Sill
+  box(dWidth * 0.85, 0.10, 0.08, matStoneShade,
+      xc, dGlassBaseY + 0.07, fZ - signZ * 0.03);
+  // Lintel
+  box(dWidth * 0.85, 0.10, 0.08, matStoneShade,
+      xc, dWallTopY - 0.08, fZ - signZ * 0.03);
+  // Left cheek (−X side)
+  box(0.07, dGlassH, dDepth + 0.04, matStone,
+      xc - dWidth / 2 - 0.035, (dGlassBaseY + dWallTopY) / 2, bcZ);
+  // Right cheek (+X side)
+  box(0.07, dGlassH, dDepth + 0.04, matStone,
+      xc + dWidth / 2 + 0.035, (dGlassBaseY + dWallTopY) / 2, bcZ);
+  // Dormer roof panels extending back to hip slope surface
+  const sZb = signZ * dSlZBase;
+  const sZp = signZ * dSlZPeak;
+  if (signZ > 0) {
+    hipQuad([xc, dPeakY, fZ], [xc, dPeakY, sZp], [xc - dGW, dWallTopY, sZb], [xc - dGW, dWallTopY, fZ], matSeam);
+    hipQuad([xc + dGW, dWallTopY, fZ], [xc + dGW, dWallTopY, sZb], [xc, dPeakY, sZp], [xc, dPeakY, fZ], matSeam);
+    tri(new THREE.Vector3(xc - dGW + 0.06, dWallTopY, fZ),
+        new THREE.Vector3(xc + dGW - 0.06, dWallTopY, fZ),
+        new THREE.Vector3(xc, dPeakY, fZ), matStone);
+  } else {
+    hipQuad([xc - dGW, dWallTopY, fZ], [xc - dGW, dWallTopY, sZb], [xc, dPeakY, sZp], [xc, dPeakY, fZ], matSeam);
+    hipQuad([xc, dPeakY, fZ], [xc, dPeakY, sZp], [xc + dGW, dWallTopY, sZb], [xc + dGW, dWallTopY, fZ], matSeam);
+    tri(new THREE.Vector3(xc + dGW - 0.06, dWallTopY, fZ),
+        new THREE.Vector3(xc - dGW + 0.06, dWallTopY, fZ),
+        new THREE.Vector3(xc, dPeakY, fZ), matStone);
+  }
+  // Ridge cap from gable peak back to hip slope intersection
+  const ridgeMidZ = (fZ + sZp) / 2;
+  const ridgeLen  = Math.abs(fZ - sZp);
+  box(0.10, 0.10, ridgeLen, matRoof, xc, dPeakY + 0.04, ridgeMidZ);
+}
+
+// 5 hip-slope dormers per short end (+Z and -Z)
+for (const xc of bayShort.centers) {
+  buildDormerHip(+1, xc);
+  buildDormerHip(-1, xc);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
