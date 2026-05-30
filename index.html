@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 7 слух.длин. заглублённых · vB8</div>
+  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 9 слух.длин.+5 слух.торц. · vB9</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -594,12 +594,12 @@ hipTri(cBL, rL, cFL, matSeam);
 // Ridge cap beam
 box(0.22, 0.16, 2 * hRz + 0.20, matRoof, 0, yRd - 0.08, 0);
 
-// ─── DORMERS: recessed on slope — eave cornice line is continuous (vB7) ──────
-// Front face set back from eave cornice (9.35). Glass starts above cornice top (~7.60).
+// ─── DORMERS: recessed on slope — eave cornice line is continuous (vB9) ──────
+// Front face set back from eave cornice (9.35). Glass starts above cornice top (~6.93).
 const dWidth      = 1.60;
 const dDepth      = 0.80;                        // dormer body depth on slope
-const dGlassBaseY = Y_EAVE + 0.25;              // 7.65 — above cornice top
-const dGlassH     = 1.50;                        // glass height
+const dGlassBaseY = Y_EAVE + 0.25;              // 6.95 — above cornice top
+const dGlassH     = 2.10;                        // glass height (increased for steeper slope)
 const dWallTopY   = dGlassBaseY + dGlassH;      // 9.15
 const dGableH     = 0.40;
 const dPeakY      = dWallTopY + dGableH;        // 9.55
@@ -660,16 +660,16 @@ function buildDormer(sign, zc) {
   box(ridgeLen, 0.10, 0.10, matRoof, ridgeMidX, dPeakY + 0.04, zc);
 }
 
-// 7 dormers per long slope: inner 7 bays (skip outermost on each end) — v12 drainage simplification
-const dormerCentersZ = bayLong.centers.slice(1, -1);
+// 9 dormers per long slope: all bay positions, coaxial with all floor windows — v15
+const dormerCentersZ = bayLong.centers;
 for (const zc of dormerCentersZ) {
   buildDormer(+1, zc);
   buildDormer(-1, zc);
 }
 
-// Hip-slope dormers on short facades (+Z and -Z) — 1 center dormer per end (reduced for drainage)
-const dFrontZ = hHL + 0.45;          // 17.45 — proud of eave by same offset as long-slope dormers
-const dBodyZC = dFrontZ - dDepth / 2; // 17.225
+// Hip-slope dormers on short facades (+Z and -Z) — recessed at eave line, behind cornice
+const dFrontZ = hHL;                 // 17.0 — at eave, behind cornice face (~17.35)
+const dBodyZC = dFrontZ - dDepth / 2; // 16.60
 // Hip slope z at dormer heights: z = hHL - (y-yEv)*(hHL-hRz)/(yRd-yEv)
 const dSlZBase = hHL - (dWallTopY - yEv) * (hHL - hRz) / (yRd - yEv);  // ≈16.17
 const dSlZPeak = hHL - (dPeakY    - yEv) * (hHL - hRz) / (yRd - yEv);  // ≈15.83
@@ -714,7 +714,11 @@ function buildDormerHip(signZ, xc) {
   box(0.10, 0.10, ridgeLen, matRoof, xc, dPeakY + 0.04, ridgeMidZ);
 }
 
-// vB6: hip-slope dormers removed — plain hip ends, fewer drain points
+// 5 hip-slope dormers per short end (+Z and -Z) — coaxial with short-facade windows
+for (const xc of bayShort.centers) {
+  buildDormerHip(+1, xc);
+  buildDormerHip(-1, xc);
+}
 
 // ═════════════════════════════════════════════════════════════════════════
 // ENVIRONMENT GEOMETRY
