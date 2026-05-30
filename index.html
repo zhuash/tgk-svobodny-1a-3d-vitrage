@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 7 слух.длин.+1 слух.торц. · vB5</div>
+  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 7 слух.длин. (без слух. торц.) · vB6</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -716,12 +716,7 @@ function buildDormerHip(signZ, xc) {
   box(0.10, 0.10, ridgeLen, matRoof, xc, dPeakY + 0.04, ridgeMidZ);
 }
 
-// 1 center hip-slope dormer per short end (+Z and -Z)
-const hipDormerCentersX = [bayShort.centers[Math.floor(bayShort.centers.length / 2)]];
-for (const xc of hipDormerCentersX) {
-  buildDormerHip(+1, xc);
-  buildDormerHip(-1, xc);
-}
+// vB6: hip-slope dormers removed — plain hip ends, fewer drain points
 
 // ═════════════════════════════════════════════════════════════════════════
 // ENVIRONMENT GEOMETRY
