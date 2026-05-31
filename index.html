@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9+9 витр.1эт(улица+река) · 4 витр.торц. · 9/9/4 ок.2эт · 9 слух.длин.+2 слух.торц.(центр.) · vB13</div>
+  <div class="dim">9+9 витр.1эт(улица+река) · 4 витр.торц. · 9/9/4 ок.2эт · 9 слух.длин.+2 слух.торц.(центр.) · vB14</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -147,7 +147,7 @@ function buildStoneTextures() {
       const fine = fbm(rng2, nx * 32, ny * 32, 3);
       const j = isJoint(x, y);
       const grime = j * 0.30;
-      const baseR = 0.950, baseG = 0.935, baseB = 0.915;  // lighter neutral off-white plaster
+      const baseR = 0.824, baseG = 0.757, baseB = 0.612;  // warm sandy cream (ref АЮ terracotta)
       const tone = 0.93 + 0.05 * v + 0.020 * (fine - 0.5);
       let r = baseR * tone, g = baseG * tone, b = baseB * tone;
       r *= (1 - grime); g *= (1 - grime * 1.05); b *= (1 - grime * 1.15);
@@ -336,7 +336,7 @@ vec2 triUV() {
 const stoneScale = 1 / stoneTex.sizeM;
 
 const matStone = new THREE.MeshStandardMaterial({
-  color: 0xECEAE3, map: stoneTex.map,
+  color: 0xD2BF9C, map: stoneTex.map,
   normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.9, 0.9),
   roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
   metalness: 0.02, envMapIntensity: 0.9,
@@ -344,7 +344,7 @@ const matStone = new THREE.MeshStandardMaterial({
 injectTriplanar(matStone, stoneScale);
 
 const matStoneShade = new THREE.MeshStandardMaterial({
-  color: 0xDCDAD2, map: stoneTex.map,
+  color: 0xBFAD8A, map: stoneTex.map,
   normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.9, 0.9),
   roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
   metalness: 0.02, envMapIntensity: 0.85,
@@ -352,7 +352,7 @@ const matStoneShade = new THREE.MeshStandardMaterial({
 injectTriplanar(matStoneShade, stoneScale);
 
 const matParapet = new THREE.MeshStandardMaterial({
-  color: 0xF0EDE6, map: stoneTex.map,
+  color: 0xE2D2B4, map: stoneTex.map,
   normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.7, 0.7),
   roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
   metalness: 0.02, envMapIntensity: 1.0,
@@ -360,15 +360,12 @@ const matParapet = new THREE.MeshStandardMaterial({
 injectTriplanar(matParapet, stoneScale);
 
 const matSeam = new THREE.MeshStandardMaterial({
-  color: 0x4a525a, map: seamTex.map,
-  normalMap: seamTex.normalMap, normalScale: new THREE.Vector2(1.2, 1.2),
-  roughnessMap: seamTex.roughnessMap, roughness: 0.55,
-  metalness: 0.55, envMapIntensity: 1.1,
+  color: 0xBD5C35, roughness: 0.85, metalness: 0.05, envMapIntensity: 0.8,
   side: THREE.DoubleSide,
 });
 
 const matRoof = new THREE.MeshStandardMaterial({
-  color: 0x4a525a, roughness: 0.55, metalness: 0.45, envMapIntensity: 1.1,
+  color: 0xA84E28, roughness: 0.85, metalness: 0.05, envMapIntensity: 0.8,
 });
 
 const matCore = new THREE.MeshStandardMaterial({ color: 0x222629, roughness: 1.0 });
