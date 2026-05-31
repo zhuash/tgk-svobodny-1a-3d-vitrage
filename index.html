@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9+9 витр.1эт(улица+река) · 5 витр.торц. · 9/9/5 ок.2эт · 9 слух.длин.+5 слух.торц. · vB9</div>
+  <div class="dim">9+9 витр.1эт(улица+река) · 2 витр.торц. · 9/9/2 ок.2эт · 9 слух.длин.+2 слух.торц. · vB10</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -442,8 +442,8 @@ function window2(f, uPos, yb, yt, wWidth, base = 0) {
 const bayLong  = bayCenters(L, 9, 1.5);   // 9 inner bays (step≈3.44 m); river + dormers use this
 const bayShort = bayCenters(W, 5, 1.6);
 
-// v11: corner windows moved to mansard (dormer) level; wall bays unchanged
-function winCentersFor(f) { return (f.axis === 'x') ? bayLong.centers : bayShort.centers; }
+// vB10: short facade 2 central axes only (±3.7 m) → 2 win/floor, 4 total per facade
+function winCentersFor(f) { return (f.axis === 'x') ? bayLong.centers : [bayShort.centers[1], bayShort.centers[3]]; }
 function pilastersFor(f) {
   const cs = winCentersFor(f);
   const hw = (f.axis === 'x') ? WALL_FACE_Z : WALL_FACE_X;
@@ -714,8 +714,8 @@ function buildDormerHip(signZ, xc) {
   box(0.10, 0.10, ridgeLen, matRoof, xc, dPeakY + 0.04, ridgeMidZ);
 }
 
-// 5 hip-slope dormers per short end (+Z and -Z) — coaxial with short-facade windows
-for (const xc of bayShort.centers) {
+// 2 hip-slope dormers per short end (+Z and -Z) — inner pair (axes 2 & 4, ±3.7 m from center)
+for (const xc of [bayShort.centers[1], bayShort.centers[3]]) {
   buildDormerHip(+1, xc);
   buildDormerHip(-1, xc);
 }
