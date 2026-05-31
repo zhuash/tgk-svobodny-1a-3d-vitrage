@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9+9 витр.1эт(улица+река) · 4 витр.торц. · 9/9/4 ок.2эт · 9 слух.длин.+2 слух.торц.(центр.) · vB12</div>
+  <div class="dim">9+9 витр.1эт(улица+река) · 4 витр.торц. · 9/9/4 ок.2эт · 9 слух.длин.+2 слух.торц.(центр.) · vB13</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -147,8 +147,8 @@ function buildStoneTextures() {
       const fine = fbm(rng2, nx * 32, ny * 32, 3);
       const j = isJoint(x, y);
       const grime = j * 0.30;
-      const baseR = 0.93, baseG = 0.87, baseB = 0.78;
-      const tone = 0.92 + 0.06 * v + 0.025 * (fine - 0.5);
+      const baseR = 0.950, baseG = 0.935, baseB = 0.915;  // lighter neutral off-white plaster
+      const tone = 0.93 + 0.05 * v + 0.020 * (fine - 0.5);
       let r = baseR * tone, g = baseG * tone, b = baseB * tone;
       r *= (1 - grime); g *= (1 - grime * 1.05); b *= (1 - grime * 1.15);
       const i = (y * W_ + x) * 4;
@@ -336,7 +336,7 @@ vec2 triUV() {
 const stoneScale = 1 / stoneTex.sizeM;
 
 const matStone = new THREE.MeshStandardMaterial({
-  color: 0xeae0cb, map: stoneTex.map,
+  color: 0xECEAE3, map: stoneTex.map,
   normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.9, 0.9),
   roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
   metalness: 0.02, envMapIntensity: 0.9,
@@ -344,7 +344,7 @@ const matStone = new THREE.MeshStandardMaterial({
 injectTriplanar(matStone, stoneScale);
 
 const matStoneShade = new THREE.MeshStandardMaterial({
-  color: 0xd5cab3, map: stoneTex.map,
+  color: 0xDCDAD2, map: stoneTex.map,
   normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.9, 0.9),
   roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
   metalness: 0.02, envMapIntensity: 0.85,
@@ -352,7 +352,7 @@ const matStoneShade = new THREE.MeshStandardMaterial({
 injectTriplanar(matStoneShade, stoneScale);
 
 const matParapet = new THREE.MeshStandardMaterial({
-  color: 0xeee5d2, map: stoneTex.map,
+  color: 0xF0EDE6, map: stoneTex.map,
   normalMap: stoneTex.normalMap, normalScale: new THREE.Vector2(0.7, 0.7),
   roughnessMap: stoneTex.roughnessMap, roughness: 1.0,
   metalness: 0.02, envMapIntensity: 1.0,
@@ -870,7 +870,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = 1.25;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
@@ -943,12 +943,12 @@ scene.add(ground);
 
 // ── GOLDEN HOUR LIGHTING ──────────────────────────────────────────────────
 // Hemisphere: warm sky / warm ground fill
-scene.add(new THREE.HemisphereLight(0xb8c8e8, 0x8a7860, 0.50));
+scene.add(new THREE.HemisphereLight(0xcce0f5, 0x9b9488, 0.60));
 
 // Directional sun: low golden hour, from +X+Z direction (behind Camera A)
 // This lights the PX and PZ faces with warm golden raking light
-const sun = new THREE.DirectionalLight(0xffd4a0, 4.2);
-sun.position.set(48, 22, 58);   // low sun from +X+Z quadrant, ~20° elevation
+const sun = new THREE.DirectionalLight(0xfff0d0, 3.6);
+sun.position.set(35, 38, 48);   // daytime sun, higher elevation (~47°), less orange
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
 sun.shadow.camera.near = 1;
