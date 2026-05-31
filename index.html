@@ -35,7 +35,7 @@
 <div id="hud">
   <div><b>ТГК «Свободный 1а»</b> — массинг с окружением</div>
   <div class="dim">Footprint 18 × 34 м · высота 11 м</div>
-  <div class="dim">9+9 витр.1эт(улица+река) · 4 витр.торц. · 9/9/4 ок.2эт · 9 слух.длин.+2 слух.торц.(центр.) · vB11</div>
+  <div class="dim">9+9 витр.1эт(улица+река) · 4 витр.торц. · 9/9/4 ок.2эт · 9 слух.длин.+2 слух.торц.(центр.) · vB12</div>
   <div class="dim">мышь: вращать · колесо: зум</div>
 </div>
 <canvas id="app"></canvas>
@@ -603,7 +603,7 @@ const dGlassH     = 2.10;                        // glass height (increased for 
 const dWallTopY   = dGlassBaseY + dGlassH;      // 9.15
 const dGableH     = 0.40;
 const dPeakY      = dWallTopY + dGableH;        // 9.55
-const dGW         = dWidth / 2 + 0.10;          // 0.90 — gable half-width with overhang
+const dGW         = dWidth / 2 + 0.22;          // 1.02 — gable half-width (covers 20 cm cheeks)
 
 // Front face recessed behind eave cornice face (cornice face ≈ x=9.35)
 const dFrontX = hHW - 0.30;             // 8.70 — on slope above eave
@@ -626,12 +626,12 @@ function buildDormer(sign, zc) {
   // Lintel at glass top
   box(0.08, 0.10, dWidth * 0.85, matStoneShade,
       fX + sign * 0.03, dWallTopY - 0.08, zc);
-  // Left cheek — full glass height on slope
-  box(dDepth + 0.04, dGlassH, 0.07, matStone,
-      bcX, (dGlassBaseY + dWallTopY) / 2, zc - dWidth / 2 - 0.035);
+  // Left cheek — solid side wall (20 cm), inner face flush with glass edge
+  box(dDepth + 0.04, dGlassH, 0.20, matStone,
+      bcX, (dGlassBaseY + dWallTopY) / 2, zc - dWidth / 2 - 0.10);
   // Right cheek
-  box(dDepth + 0.04, dGlassH, 0.07, matStone,
-      bcX, (dGlassBaseY + dWallTopY) / 2, zc + dWidth / 2 + 0.035);
+  box(dDepth + 0.04, dGlassH, 0.20, matStone,
+      bcX, (dGlassBaseY + dWallTopY) / 2, zc + dWidth / 2 + 0.10);
   // Extended dormer roof panels — run back from gable peak to main slope intersection
   const sXb = sign * dSlXBase;   // slope x at y=dWallTopY (±6.5)
   const sXp = sign * dSlXPeak;   // slope x at y=dPeakY    (±5.5)
@@ -686,12 +686,12 @@ function buildDormerHip(signZ, xc) {
   // Lintel
   box(dWidth * 0.85, 0.10, 0.08, matStoneShade,
       xc, dWallTopY - 0.08, fZ - signZ * 0.03);
-  // Left cheek (−X side)
-  box(0.07, dGlassH, dDepth + 0.04, matStone,
-      xc - dWidth / 2 - 0.035, (dGlassBaseY + dWallTopY) / 2, bcZ);
+  // Left cheek (−X side) — solid 20 cm side wall
+  box(0.20, dGlassH, dDepth + 0.04, matStone,
+      xc - dWidth / 2 - 0.10, (dGlassBaseY + dWallTopY) / 2, bcZ);
   // Right cheek (+X side)
-  box(0.07, dGlassH, dDepth + 0.04, matStone,
-      xc + dWidth / 2 + 0.035, (dGlassBaseY + dWallTopY) / 2, bcZ);
+  box(0.20, dGlassH, dDepth + 0.04, matStone,
+      xc + dWidth / 2 + 0.10, (dGlassBaseY + dWallTopY) / 2, bcZ);
   // Dormer roof panels extending back to hip slope surface
   const sZb = signZ * dSlZBase;
   const sZp = signZ * dSlZPeak;
